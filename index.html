@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs-like Editor with Custom TTF Fonts</title>
+  <style>
+    :root {
+      --bg: #f3f3f3;
+      --panel: #ffffff;
+      --line: #d7d7d7;
+      --text: #1f1f1f;
+      --muted: #5f6368;
+      --accent: #1a73e8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, sans-serif;
+    }
+
+    .app {
+      max-width: 1000px;
+      margin: 24px auto;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-bottom: none;
+      padding: 12px 18px;
+      border-radius: 12px 12px 0 0;
+      flex-wrap: wrap;
+    }
+
+    .toolbar button, .toolbar select, .toolbar input[type="file"] {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover, .toolbar select:hover {
+      border-color: #b7b7b7;
+    }
+
+    .document-shell {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 0 0 12px 12px;
+      min-height: 800px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 32px 0;
+    }
+
+    .document {
+      width: min(760px, calc(100% - 64px));
+      min-height: 1100px;
+      margin: 0 auto;
+      background: #fff;
+      outline: none;
+      line-height: 1.7;
+      font-size: 16px;
+      padding: 28px 32px;
+      border: 1px solid rgba(0,0,0,0.02);
+    }
+
+    .document:empty::before {
+      content: "Start typing here...";
+      color: #aaa;
+      font-style: italic;
+    }
+
+    .document p {
+      margin: 0 0 16px;
+    }
+
+    .font-list {
+      max-width: 200px;
+    }
+
+    .hidden-input {
+      display: none;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: auto;
+    }
+
+    @media (max-width: 640px) {
+      .toolbar {
+        gap: 8px;
+      }
+      .document-shell {
+        padding-top: 20px;
+      }
+      .document {
+        width: calc(100% - 28px);
+        padding: 18px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <button onclick="formatDoc('bold')"><strong>B</strong></button>
+      <button onclick="formatDoc('italic')"><em>I</em></button>
+      <button onclick="formatDoc('underline')"><span style="text-decoration: underline;">U</span></button>
+
+      <select id="fontSize" onchange="changeFontSize(this.value)">
+        <option value="12">12</option>
+        <option value="14">14</option>
+        <option value="16" selected>16</option>
+        <option value="18">18</option>
+        <option value="20">20</option>
+        <option value="24">24</option>
+        <option value="30">30</option>
+      </select>
+
+      <select id="fontFamily" class="font-list" onchange="changeFontFamily(this.value)">
+        <option value="Arial">Arial</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Verdana">Verdana</option>
+        <option value="Courier New">Courier New</option>
+        <option value="Trebuchet MS">Trebuchet MS</option>
+      </select>
+
+      <button onclick="formatDoc('insertUnorderedList')">• List</button>
+      <button onclick="formatDoc('insertOrderedList')">1. List</button>
+      <button onclick="formatDoc('justifyLeft')">Left</button>
+      <button onclick="formatDoc('justifyCenter')">Center</button>
+      <button onclick="formatDoc('justifyRight')">Right</button>
+
+      <label for="fontUpload" style="cursor: pointer; border: 1px solid var(--line); padding: 8px 10px; border-radius: 8px;">
+        Upload TTF
+      </label>
+      <input id="fontUpload" class="hidden-input" type="file" accept=".ttf" />
+
+      <div class="status" id="statusText">Autosaved locally</div>
+    </div>
+
+    <div class="document-shell">
+      <div id="editor" class="document" contenteditable="true" spellcheck="true"></div>
+    </div>
+  </div>
+
+  <script>
+    const editor = document.getElementById('editor');
+    const fontUpload = document.getElementById('fontUpload');
+    const fontFamilySelect = document.getElementById('fontFamily');
+    const statusText = document.getElementById('statusText');
+
+    const STORAGE_KEY = 'docs-like-editor-content-v1';
+    const FONT_KEY = 'docs-like-editor-fonts-v1';
+
+    const savedContent = localStorage.getItem(STORAGE_KEY);
+    if (savedContent) {
+      editor.innerHTML = savedContent;
+    }
+
+    editor.addEventListener('input', () => {
+      localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+      statusText.textContent = 'Saved';
+      setTimeout(() => statusText.textContent = 'Autosaved locally', 800);
+    });
+
+    function formatDoc(command, value = null) {
+      document.execCommand(command, false, value);
+      editor.focus();
+      localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+    }
+
+    function changeFontSize(value) {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      if (range.collapsed && !selection.toString()) {
+        editor.style.fontSize = value + 'px';
+        localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+        return;
+      }
+
+      const span = document.createElement('span');
+      span.style.fontSize = value + 'px';
+      if (selection.rangeCount > 0) {
+        range.surroundContents(span);
+      }
+      localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+    }
+
+    function changeFontFamily(value) {
+      formatDoc('fontName', value);
+      localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+    }
+
+    fontUpload.addEventListener('change', function (event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (!file.name.toLowerCase().endsWith('.ttf')) {
+        alert('Please upload a .ttf font file.');
+        return;
+      }
+
+      const fontName = file.name.replace(/\.ttf$/i, '').replace(/[_-]+/g, ' ');
+      const fontUrl = URL.createObjectURL(file);
+
+      const style = document.createElement('style');
+      style.textContent += `
+        @font-face {
+          font-family: "${fontName}";
+          src: url("${fontUrl}") format("truetype");
+          font-weight: normal;
+          font-style: normal;
+        }
+      `;
+      document.head.appendChild(style);
+
+      const fonts = JSON.parse(localStorage.getItem(FONT_KEY) || '[]');
+      fonts.push({ name: fontName, url: fontUrl });
+      localStorage.setItem(FONT_KEY, JSON.stringify(fonts));
+
+      const optionExists = [...fontFamilySelect.options].some(o => o.value === fontName);
+      if (!optionExists) {
+        const option = document.createElement('option');
+        option.value = fontName;
+        option.textContent = fontName;
+        fontFamilySelect.appendChild(option);
+      }
+
+      fontFamilySelect.value = fontName;
+      formatDoc('fontName', fontName);
+      statusText.textContent = `Loaded font: ${fontName}`;
+      setTimeout(() => statusText.textContent = 'Autosaved locally', 1200);
+    });
+
+    function restoreCustomFonts() {
+      const fonts = JSON.parse(localStorage.getItem(FONT_KEY) || '[]');
+      if (!fonts.length) return;
+
+      const style = document.createElement('style');
+      fonts.forEach(font => {
+        style.textContent += `
+          @font-face {
+            font-family: "${font.name}";
+            src: url("${font.url}") format("truetype");
+            font-weight: normal;
+            font-style: normal;
+          }
+        `;
+        if (![...fontFamilySelect.options].some(o => o.value === font.name)) {
+          const option = document.createElement('option');
+          option.value = font.name;
+          option.textContent = font.name;
+          fontFamilySelect.appendChild(option);
+        }
+      });
+      document.head.appendChild(style);
+    }
+
+    restoreCustomFonts();
+  </script>
+</body>
+</html>
